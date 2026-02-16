@@ -351,15 +351,73 @@ function LoginForm() {
             </a>
           </p>
 
-          {/* Debug info (remove in production) */}
-          {process.env.NODE_ENV === "development" && arubaParams.mac && (
-            <details className="mt-6 text-xs text-slate-600">
-              <summary className="cursor-pointer">Debug: Aruba Params</summary>
-              <pre className="mt-2 p-3 bg-slate-900 rounded-lg overflow-x-auto">
-                {JSON.stringify(arubaParams, null, 2)}
-              </pre>
-            </details>
-          )}
+          {/* Debug info - ALWAYS VISIBLE to diagnose Aruba connection */}
+          <div className="mt-6 p-4 bg-slate-900/80 border border-slate-700 rounded-xl">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
+              <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wide">
+                Debug: Aruba Connection Info
+              </h3>
+            </div>
+            <div className="space-y-2 text-xs">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="text-slate-500">Client MAC:</div>
+                <div className="text-slate-200 font-mono break-all">
+                  {arubaParams.mac || <span className="text-red-400">❌ Missing</span>}
+                </div>
+
+                <div className="text-slate-500">SSID:</div>
+                <div className="text-slate-200 font-mono break-all">
+                  {arubaParams.essid || <span className="text-yellow-400">⚠️ Missing</span>}
+                </div>
+
+                <div className="text-slate-500">Client IP:</div>
+                <div className="text-slate-200 font-mono break-all">
+                  {arubaParams.ip || <span className="text-yellow-400">⚠️ Missing</span>}
+                </div>
+
+                <div className="text-slate-500">AP MAC:</div>
+                <div className="text-slate-200 font-mono break-all">
+                  {arubaParams.apmac || <span className="text-yellow-400">⚠️ Missing</span>}
+                </div>
+
+                <div className="text-slate-500">Login URL:</div>
+                <div className="text-slate-200 font-mono break-all text-[10px]">
+                  {arubaParams.loginurl || <span className="text-red-400">❌ CRITICAL: Missing</span>}
+                </div>
+              </div>
+
+              {!arubaParams.mac && (
+                <div className="mt-3 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                  <p className="text-red-400 text-xs font-medium">
+                    ⚠️ Aruba is not passing redirect parameters!
+                  </p>
+                  <p className="text-red-300 text-[10px] mt-1">
+                    Check Aruba External Captive Portal configuration.
+                  </p>
+                </div>
+              )}
+
+              {arubaParams.mac && !arubaParams.loginurl && (
+                <div className="mt-3 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+                  <p className="text-yellow-400 text-xs font-medium">
+                    ⚠️ Missing loginurl parameter
+                  </p>
+                  <p className="text-yellow-300 text-[10px] mt-1">
+                    Portal won't be able to redirect back to Aruba after login.
+                  </p>
+                </div>
+              )}
+
+              <details className="mt-3">
+                <summary className="cursor-pointer text-slate-400 hover:text-slate-300">
+                  Show Full URL Parameters
+                </summary>
+                <pre className="mt-2 p-3 bg-slate-950 rounded-lg overflow-x-auto text-[10px] text-slate-400">
+{JSON.stringify(arubaParams, null, 2)}</pre>
+              </details>
+            </div>
+          </div>
         </div>
       </div>
 
