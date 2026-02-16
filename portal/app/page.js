@@ -22,7 +22,9 @@ function LoginForm() {
     vcname: "",        // Virtual controller name
     switchip: "",      // Switch/Controller IP
     url: "",           // Original URL the user tried to visit
-    loginurl: "",      // URL to POST credentials back to Aruba
+    post: "",          // Aruba Instant On cloud auth gateway host
+    loginurl: "",      // Constructed from 'post': https://<post>/cgi-bin/login
+    site: "",          // Site identifier
   });
 
   const [authMethod, setAuthMethod] = useState("email"); // email | phone | click
@@ -35,18 +37,23 @@ function LoginForm() {
   const [locationInfo, setLocationInfo] = useState(null);
 
   useEffect(() => {
-    // Parse Aruba redirect parameters from URL
+    // Parse Aruba Instant On redirect parameters from URL
+    // Aruba Instant On uses 'post' param for the cloud auth gateway
+    const postHost = searchParams.get("post") || "";
     const params = {
       cmd: searchParams.get("cmd") || "",
       mac: searchParams.get("mac") || searchParams.get("client_mac") || "",
-      essid: searchParams.get("essid") || searchParams.get("ssid") || "",
+      essid: searchParams.get("essid") || searchParams.get("ssid") || searchParams.get("network") || "",
       ip: searchParams.get("ip") || searchParams.get("client_ip") || "",
       apname: searchParams.get("apname") || "",
       apmac: searchParams.get("apmac") || searchParams.get("ap_mac") || "",
       vcname: searchParams.get("vcname") || "",
       switchip: searchParams.get("switchip") || searchParams.get("switch_url") || "",
       url: searchParams.get("url") || searchParams.get("redirect_url") || "",
-      loginurl: searchParams.get("loginurl") || searchParams.get("login_url") || "",
+      post: postHost,
+      // Construct the actual login URL from the 'post' parameter
+      loginurl: searchParams.get("loginurl") || searchParams.get("login_url") || (postHost ? `https://${postHost}/cgi-bin/login` : ""),
+      site: searchParams.get("site") || "",
     };
     setArubaParams(params);
 
@@ -95,19 +102,14 @@ function LoginForm() {
 
       setSuccess(true);
 
-      // Step 2: Authenticate with Aruba RADIUS
+      // Step 2: POST to Aruba Instant On cloud auth gateway
+      // The 'post' param gives us the host, login URL = https://<post>/cgi-bin/login
       setTimeout(() => {
-        let authUrl = arubaParams.loginurl;
-
-        // If loginurl not provided, construct it from switchip or AP IP
-        if (!authUrl && (arubaParams.switchip || arubaParams.ip)) {
-          const controllerIp = arubaParams.switchip || arubaParams.ip;
-          // Aruba Instant On authentication endpoint
-          authUrl = `http://${controllerIp}/auth/index.html/u`;
-        }
+        const authUrl = arubaParams.loginurl;
+        const redirectUrl = arubaParams.url || "http://connectivitycheck.gstatic.com/generate_204";
 
         if (authUrl) {
-          // POST credentials to Aruba for RADIUS authentication
+          // POST credentials to Aruba cloud gateway for RADIUS authentication
           const form = document.createElement("form");
           form.method = "POST";
           form.action = authUrl;
@@ -120,20 +122,19 @@ function LoginForm() {
             form.appendChild(input);
           };
 
-          // Aruba Instant On authentication parameters
           addField("user", data.data.username);
           addField("password", data.data.password);
           addField("cmd", "authenticate");
           addField("Login", "Log In");
+          addField("url", redirectUrl);
 
           document.body.appendChild(form);
           form.submit();
         } else {
-          // Fallback: redirect to original URL
-          const redirectUrl = data.data.redirect_url || arubaParams.url || "http://www.google.com/generate_204";
+          // No auth URL available - redirect and hope AP re-checks
           window.location.href = redirectUrl;
         }
-      }, 2000);
+      }, 1500);
 
     } catch (err) {
       setError(err.message);
@@ -164,11 +165,13 @@ function LoginForm() {
       setSuccess(true);
 
       setTimeout(() => {
-        if (arubaParams.loginurl) {
-          // Traditional Aruba - POST credentials
+        const authUrl = arubaParams.loginurl;
+        const redirectUrl = arubaParams.url || "http://connectivitycheck.gstatic.com/generate_204";
+
+        if (authUrl) {
           const form = document.createElement("form");
           form.method = "POST";
-          form.action = arubaParams.loginurl;
+          form.action = authUrl;
 
           const addField = (n, v) => {
             const i = document.createElement("input");
@@ -179,14 +182,15 @@ function LoginForm() {
           addField("user", data.data.username);
           addField("password", data.data.password);
           addField("cmd", "authenticate");
+          addField("Login", "Log In");
+          addField("url", redirectUrl);
 
           document.body.appendChild(form);
           form.submit();
         } else {
-          // Aruba Instant On - trigger re-auth
-          window.location.href = data.data.redirect_url || "http://www.google.com/generate_204";
+          window.location.href = redirectUrl;
         }
-      }, 2000);
+      }, 1500);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -389,9 +393,14 @@ function LoginForm() {
                   {arubaParams.apmac || <span className="text-yellow-400">⚠️ Missing</span>}
                 </div>
 
+                <div className="text-slate-500">Post Host:</div>
+                <div className="text-slate-200 font-mono break-all text-[10px]">
+                  {arubaParams.post || <span className="text-red-400">❌ Missing</span>}
+                </div>
+
                 <div className="text-slate-500">Login URL:</div>
                 <div className="text-slate-200 font-mono break-all text-[10px]">
-                  {arubaParams.loginurl || <span className="text-red-400">❌ CRITICAL: Missing</span>}
+                  {arubaParams.loginurl || <span className="text-red-400">❌ Missing (no 'post' param)</span>}
                 </div>
               </div>
 
@@ -407,14 +416,13 @@ function LoginForm() {
               )}
 
               {arubaParams.mac && !arubaParams.loginurl && (
-                <div className="mt-3 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-                  <p className="text-blue-400 text-xs font-medium">
-                    ℹ️ loginurl not provided - will construct auth endpoint
+                <div className="mt-3 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                  <p className="text-red-400 text-xs font-medium">
+                    ❌ Missing 'post' parameter from Aruba
                   </p>
-                  <p className="text-blue-300 text-[10px] mt-1 font-mono">
-                    {arubaParams.switchip || arubaParams.ip
-                      ? `Will use: http://${arubaParams.switchip || arubaParams.ip}/auth/index.html/u`
-                      : "No controller IP available"}
+                  <p className="text-red-300 text-[10px] mt-1">
+                    Aruba should send: ?post=&lt;host&gt;&amp;mac=...
+                    Check External Captive Portal config in Aruba Instant On.
                   </p>
                 </div>
               )}
@@ -422,7 +430,7 @@ function LoginForm() {
               {arubaParams.loginurl && (
                 <div className="mt-3 p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
                   <p className="text-green-400 text-xs font-medium">
-                    ✅ Will authenticate via provided loginurl
+                    ✅ Will POST to: {arubaParams.loginurl}
                   </p>
                 </div>
               )}
@@ -432,7 +440,11 @@ function LoginForm() {
                   Show Full URL Parameters
                 </summary>
                 <pre className="mt-2 p-3 bg-slate-950 rounded-lg overflow-x-auto text-[10px] text-slate-400">
-{JSON.stringify(arubaParams, null, 2)}</pre>
+{(() => {
+  const all = {};
+  searchParams.forEach((v, k) => { all[k] = v; });
+  return JSON.stringify({ parsed: arubaParams, raw: all }, null, 2);
+})()}</pre>
               </details>
             </div>
           </div>
