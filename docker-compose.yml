@@ -1,0 +1,89 @@
+version: "3.8"
+
+services:
+  # ─── FreeRADIUS Server ───
+  freeradius:
+    build: ./freeradius
+    container_name: captive-freeradius
+    ports:
+      - "1812:1812/udp"  # Authentication
+      - "1813:1813/udp"  # Accounting
+    environment:
+      - RADIUS_SECRET=${RADIUS_SECRET:-testing123}
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-captive_portal}
+      - DB_USER=${DB_USER:-radius}
+      - DB_PASS=${DB_PASS:-radiuspass}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - captive-net
+
+  # ─── API Server (Node.js/Express) ───
+  api:
+    build: ./api
+    container_name: captive-api
+    ports:
+      - "4000:4000"
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-captive_portal}
+      - DB_USER=${DB_USER:-radius}
+      - DB_PASS=${DB_PASS:-radiuspass}
+      - JWT_SECRET=${JWT_SECRET:-supersecretkey123}
+      - RADIUS_SECRET=${RADIUS_SECRET:-testing123}
+      - PORTAL_URL=${PORTAL_URL:-http://localhost:3000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - captive-net
+
+  # ─── Next.js Captive Portal Page ───
+  portal:
+    build: ./portal
+    container_name: captive-portal
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=${API_URL:-http://localhost:4000}
+      - NEXT_PUBLIC_PORTAL_NAME=${PORTAL_NAME:-Free WiFi}
+    restart: unless-stopped
+    networks:
+      - captive-net
+
+  # ─── PostgreSQL Database ───
+  postgres:
+    image: postgres:16-alpine
+    container_name: captive-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=${DB_NAME:-captive_portal}
+      - POSTGRES_USER=${DB_USER:-radius}
+      - POSTGRES_PASSWORD=${DB_PASS:-radiuspass}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-radius} -d ${DB_NAME:-captive_portal}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - captive-net
+
+volumes:
+  postgres_data:
+
+networks:
+  captive-net:
+    driver: bridge
