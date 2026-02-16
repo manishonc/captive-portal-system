@@ -95,40 +95,46 @@ function LoginForm() {
 
       setSuccess(true);
 
-      // Step 2: Redirect to Aruba login URL with credentials
-      // Aruba Instant On expects a form POST to its login URL
-      if (arubaParams.loginurl) {
-        // Create a hidden form and submit to Aruba
-        const form = document.createElement("form");
-        form.method = "POST";
-        form.action = arubaParams.loginurl;
+      // Step 2: Authenticate with Aruba RADIUS
+      setTimeout(() => {
+        let authUrl = arubaParams.loginurl;
 
-        const addField = (name, value) => {
-          const input = document.createElement("input");
-          input.type = "hidden";
-          input.name = name;
-          input.value = value;
-          form.appendChild(input);
-        };
+        // If loginurl not provided, construct it from switchip or AP IP
+        if (!authUrl && (arubaParams.switchip || arubaParams.ip)) {
+          const controllerIp = arubaParams.switchip || arubaParams.ip;
+          // Aruba Instant On authentication endpoint
+          authUrl = `http://${controllerIp}/auth/index.html/u`;
+        }
 
-        addField("user", data.data.username);
-        addField("password", data.data.password);
-        addField("cmd", "authenticate");
-        addField("Login", "Log In");
+        if (authUrl) {
+          // POST credentials to Aruba for RADIUS authentication
+          const form = document.createElement("form");
+          form.method = "POST";
+          form.action = authUrl;
 
-        document.body.appendChild(form);
+          const addField = (name, value) => {
+            const input = document.createElement("input");
+            input.type = "hidden";
+            input.name = name;
+            input.value = value;
+            form.appendChild(input);
+          };
 
-        setTimeout(() => {
+          // Aruba Instant On authentication parameters
+          addField("user", data.data.username);
+          addField("password", data.data.password);
+          addField("cmd", "authenticate");
+          addField("Login", "Log In");
+
+          document.body.appendChild(form);
           form.submit();
-        }, 1500);
-      } else {
-        // No Aruba URL — likely testing mode
-        // Redirect to the original URL or a default
-        setTimeout(() => {
-          const redirectUrl = data.data.redirect_url || arubaParams.url || "https://google.com";
+        } else {
+          // Fallback: redirect to original URL
+          const redirectUrl = data.data.redirect_url || arubaParams.url || "http://www.google.com/generate_204";
           window.location.href = redirectUrl;
-        }, 2000);
-      }
+        }
+      }, 2000);
+
     } catch (err) {
       setError(err.message);
     } finally {
@@ -157,28 +163,30 @@ function LoginForm() {
 
       setSuccess(true);
 
-      if (arubaParams.loginurl) {
-        const form = document.createElement("form");
-        form.method = "POST";
-        form.action = arubaParams.loginurl;
+      setTimeout(() => {
+        if (arubaParams.loginurl) {
+          // Traditional Aruba - POST credentials
+          const form = document.createElement("form");
+          form.method = "POST";
+          form.action = arubaParams.loginurl;
 
-        const addField = (n, v) => {
-          const i = document.createElement("input");
-          i.type = "hidden"; i.name = n; i.value = v;
-          form.appendChild(i);
-        };
+          const addField = (n, v) => {
+            const i = document.createElement("input");
+            i.type = "hidden"; i.name = n; i.value = v;
+            form.appendChild(i);
+          };
 
-        addField("user", data.data.username);
-        addField("password", data.data.password);
-        addField("cmd", "authenticate");
+          addField("user", data.data.username);
+          addField("password", data.data.password);
+          addField("cmd", "authenticate");
 
-        document.body.appendChild(form);
-        setTimeout(() => form.submit(), 1500);
-      } else {
-        setTimeout(() => {
-          window.location.href = data.data.redirect_url || "https://google.com";
-        }, 2000);
-      }
+          document.body.appendChild(form);
+          form.submit();
+        } else {
+          // Aruba Instant On - trigger re-auth
+          window.location.href = data.data.redirect_url || "http://www.google.com/generate_204";
+        }
+      }, 2000);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -399,12 +407,22 @@ function LoginForm() {
               )}
 
               {arubaParams.mac && !arubaParams.loginurl && (
-                <div className="mt-3 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-                  <p className="text-yellow-400 text-xs font-medium">
-                    ⚠️ Missing loginurl parameter
+                <div className="mt-3 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+                  <p className="text-blue-400 text-xs font-medium">
+                    ℹ️ loginurl not provided - will construct auth endpoint
                   </p>
-                  <p className="text-yellow-300 text-[10px] mt-1">
-                    Portal won't be able to redirect back to Aruba after login.
+                  <p className="text-blue-300 text-[10px] mt-1 font-mono">
+                    {arubaParams.switchip || arubaParams.ip
+                      ? `Will use: http://${arubaParams.switchip || arubaParams.ip}/auth/index.html/u`
+                      : "No controller IP available"}
+                  </p>
+                </div>
+              )}
+
+              {arubaParams.loginurl && (
+                <div className="mt-3 p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
+                  <p className="text-green-400 text-xs font-medium">
+                    ✅ Will authenticate via provided loginurl
                   </p>
                 </div>
               )}
